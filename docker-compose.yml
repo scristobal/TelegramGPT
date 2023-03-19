@@ -1,0 +1,11 @@
+version: '3.7'
+
+services:
+  bot:
+    image: scristobal/chatlyze:latest
+    container_name: chatlyze
+    env_file: .env
+    build:
+      context: .
+    ports:
+      - 8080:8080
