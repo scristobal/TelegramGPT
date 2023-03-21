@@ -2,7 +2,6 @@ use std::fmt::Display;
 
 use crate::openai_client;
 
-use serde::Serialize;
 use teloxide::{
     dispatching::{
         dialogue::{self, InMemStorage},
@@ -30,14 +29,19 @@ pub enum Command {
     Reset,
     Mute,
     Listen,
-    Sumarize,
+    Summarize,
 }
 
-#[derive(Debug, Default, Clone)]
+#[derive(Debug, Clone)]
 pub enum State {
-    #[default]
     Muted,
     Listening(Vec<Message>),
+}
+
+impl Default for State {
+    fn default() -> Self {
+        Self::Listening(vec![])
+    }
 }
 
 impl Display for State {
@@ -45,7 +49,7 @@ impl Display for State {
         match self {
             State::Muted => write!(f, "Sate: muted"),
             State::Listening(msgs) => {
-                f.write_fmt(format_args!("State:chatting({} msgs)", msgs.len()))
+                f.write_fmt(format_args!("State:listening({} msgs)", msgs.len()))
             }
         }
     }
@@ -58,7 +62,7 @@ pub fn schema() -> UpdateHandler<anyhow::Error> {
         .branch(case![State::Muted].branch(case![Command::Listen].endpoint(listen)))
         .branch(
             case![State::Listening(msgs)]
-                .branch(case![Command::Sumarize].endpoint(sumarize))
+                .branch(case![Command::Summarize].endpoint(sumarize))
                 .branch(case![Command::Reset].endpoint(reset))
                 .branch(case![Command::Mute].endpoint(mute)),
         );
