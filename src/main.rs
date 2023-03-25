@@ -1,10 +1,10 @@
 use chatlyze::{
     health_checker,
-    telegram_bot::{schema, State},
+    telegram_bot::{schema, Command, State},
 };
 use dotenv::dotenv;
 use std::io::Result;
-use teloxide::{dispatching::dialogue::InMemStorage, prelude::*};
+use teloxide::{dispatching::dialogue::InMemStorage, prelude::*, utils::command::BotCommands};
 use tracing::info;
 
 #[tokio::main]
@@ -19,7 +19,13 @@ async fn main() -> Result<()> {
     tokio::spawn(health_checker::run(([0, 0, 0, 0], 8080)));
 
     info!("Starting bot...");
+
     let bot = teloxide::Bot::from_env();
+
+    bot.set_my_commands(Command::bot_commands())
+        .send()
+        .await
+        .unwrap();
 
     let me = bot.get_me().await.unwrap().mention();
 
