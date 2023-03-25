@@ -25,13 +25,18 @@ use dptree::case;
 )]
 #[derive(Debug)]
 pub enum Command {
-    #[command()]
+    #[command(description = "Give the current state of the bot")]
     State,
+    #[command(description = "Clear chat history")]
     Reset,
+    #[command(description = "The bot will stop listening to messages")]
     Mute,
+    #[command(description = "The bot will start listening to messagess")]
     Listen,
+    #[command(description = "Make a summary of the group activity")]
     Summarize,
-    Chat,
+    #[command(description = "Chat with the bot")]
+    Chat { text: String },
 }
 
 type GroupHistory = Vec<Message>;
@@ -61,25 +66,21 @@ pub struct History {
 
 #[derive(Debug, Clone)]
 pub enum State {
-    Muted,
-    Listening(History),
+    Offline,
+    Online(History),
 }
 
 impl Default for State {
     fn default() -> Self {
-        Self::Listening(History::default())
+        Self::Online(History::default())
     }
 }
 
 impl Display for State {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            State::Muted => write!(f, "Sate: muted"),
-            State::Listening(messages) => f.write_fmt(format_args!(
-                "State:listening({} group messages and {} bot messages)",
-                messages.group_history.len(),
-                messages.bot_history.len()
-            )),
+            State::Offline => write!(f, "`sate ` ❌"),
+            State::Online(_) => write!(f, "`state` ✅"),
         }
     }
 }
@@ -88,19 +89,19 @@ impl Display for State {
 pub fn schema() -> UpdateHandler<anyhow::Error> {
     let cmd_handler = filter_command::<Command, _>()
         .branch(case![Command::State].endpoint(state))
-        .branch(case![State::Muted].branch(case![Command::Listen].endpoint(listen)))
+        .branch(case![State::Offline].branch(case![Command::Listen].endpoint(listen)))
         .branch(
-            case![State::Listening(msgs)]
+            case![State::Online(msgs)]
                 .branch(case![Command::Summarize].endpoint(sumarize))
                 .branch(case![Command::Reset].endpoint(reset))
                 .branch(case![Command::Mute].endpoint(mute))
-                .branch(case![Command::Chat].endpoint(chat)),
+                .branch(case![Command::Chat { text }].endpoint(chat)),
         );
 
     let msg_handler = Update::filter_message()
         .branch(cmd_handler)
-        .branch(case![State::Muted].endpoint(muted))
-        .branch(case![State::Listening(msgs)].endpoint(incoming_message))
+        .branch(case![State::Offline].endpoint(muted))
+        .branch(case![State::Online(msgs)].endpoint(incoming_message))
         .endpoint(invalid);
 
     dialogue::enter::<Update, InMemStorage<State>, State, _>().branch(msg_handler)
@@ -118,7 +119,9 @@ async fn state(bot: Bot, dialogue: InMemDialogue, message: Message) -> HandlerRe
         Some(state) => format!("{}", state),
     };
 
-    bot.send_message(message.chat.id, reply_txt).await?;
+    bot.send_message(message.chat.id, reply_txt)
+        .parse_mode(ParseMode::MarkdownV2)
+        .await?;
 
     Ok(())
 }
@@ -126,7 +129,7 @@ async fn state(bot: Bot, dialogue: InMemDialogue, message: Message) -> HandlerRe
 async fn listen(bot: Bot, dialogue: InMemDialogue, message: Message) -> HandlerResult {
     dialogue.update(State::default()).await?;
 
-    bot.send_message(message.chat.id, "`state:listening`")
+    bot.send_message(message.chat.id, State::default().to_string())
         .parse_mode(ParseMode::MarkdownV2)
         .await?;
 
@@ -134,9 +137,9 @@ async fn listen(bot: Bot, dialogue: InMemDialogue, message: Message) -> HandlerR
 }
 
 async fn mute(bot: Bot, dialogue: InMemDialogue, message: Message) -> HandlerResult {
-    dialogue.update(State::Muted).await?;
+    dialogue.update(State::Offline).await?;
 
-    bot.send_message(message.chat.id, "`state:muted`")
+    bot.send_message(message.chat.id, State::Offline.to_string())
         .parse_mode(ParseMode::MarkdownV2)
         .await?;
 
@@ -168,12 +171,12 @@ async fn sumarize(bot: Bot, dialogue: InMemDialogue, message: Message) -> Handle
                 .await?;
             return Ok(());
         }
-        Some(State::Muted) => {
-            bot.send_message(message.chat.id, "The bot is muted")
+        Some(State::Offline) => {
+            bot.send_message(message.chat.id, "The bot is offline")
                 .await?;
             return Ok(());
         }
-        Some(State::Listening(msgs)) => msgs,
+        Some(State::Online(msgs)) => msgs,
     };
 
     let openai_response = openai_client::sumarize(&messages.group_history).await;
@@ -211,7 +214,7 @@ async fn sumarize(bot: Bot, dialogue: InMemDialogue, message: Message) -> Handle
 async fn reset(bot: Bot, dialogue: InMemDialogue, message: Message) -> HandlerResult {
     dialogue.update(State::default()).await?;
 
-    bot.send_message(message.chat.id, "`status:listening:clear-history`")
+    bot.send_message(message.chat.id, State::default().to_string())
         .parse_mode(ParseMode::MarkdownV2)
         .await?;
 
@@ -229,7 +232,7 @@ async fn incoming_message(
     mut history: History,
 ) -> HandlerResult {
     history.group_history.push(new_message);
-    dialogue.update(State::Listening(history)).await?;
+    dialogue.update(State::Online(history)).await?;
 
     Ok(())
 }
@@ -237,36 +240,15 @@ async fn incoming_message(
 async fn chat(
     bot: Bot,
     dialogue: InMemDialogue,
+    text: String,
     message: Message,
     mut history: History,
 ) -> HandlerResult {
-    // GUARDS
-    // check if the bot is mentioned in non-private chats (groups, and so)
-    // if not mentioned and not in private chat, do nothing
-    // otherwise remove metion and go ahead
-
-    let me = bot.get_me().await?.mention();
-
-    let msg_text = message.text().unwrap();
-
-    if !message.chat.is_private() && !msg_text.starts_with(&me) {
-        return Ok(());
-    }
-
-    let msg_text = msg_text.replace(&me, "");
-
-    if msg_text.is_empty() {
-        return Ok(());
-    }
-
-    // end of bot mention check
-    // TODO: move this to a .chain method
-
     let username = message.from().and_then(|user| user.username.clone());
 
     history.bot_history.push(BotMessage {
         role: Role::User,
-        content: msg_text,
+        content: text,
         name: username,
     });
 
@@ -311,7 +293,7 @@ async fn chat(
                 });
             }
 
-            dialogue.update(State::Listening(history)).await.unwrap();
+            dialogue.update(State::Online(history)).await.unwrap();
 
             reply_txt = escape(&reply_txt);
 
