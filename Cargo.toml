@@ -7,10 +7,10 @@ edition = "2021"
 
 [dependencies]
 anyhow = "1.0.69"
-async-openai = "0.9.2"
+async-openai = "0.10.1"
 dotenv = "0.15.0"
-reqwest = "0.11.14"
-serde = "1.0.154"
+reqwest = { version = "0.11.14", features = ['json']}
+serde = { version = "1.0.154",features = ["derive"] }
 serde_json = "1.0.94"
 serde_with = "2.3.1"
 teloxide = { version = "0.12.2", features = ["macros"] }
