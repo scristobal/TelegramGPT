@@ -55,7 +55,7 @@ pub async fn group_question(
 
 #[instrument]
 pub async fn reply(
-    msgs: &[ChatCompletionRequestMessage],
+    messages: &[ChatCompletionRequestMessage],
     system: Option<&str>,
     model: Option<&str>,
 ) -> Result<CreateChatCompletionResponse, OpenAIError> {
@@ -69,14 +69,14 @@ pub async fn reply(
         name: None,
     };
 
-    let mut req_msgs = vec![system_msg];
+    let mut request_messages = vec![system_msg];
 
-    req_msgs.extend_from_slice(msgs);
+    request_messages.extend_from_slice(messages);
 
     let request = CreateChatCompletionRequestArgs::default()
         .max_tokens(512u16)
         .model(model.unwrap_or("gpt-4"))
-        .messages(msgs)
+        .messages(messages)
         .build()?;
 
     client.chat().create(request).await
