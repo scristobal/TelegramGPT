@@ -4,12 +4,12 @@ use reqwest::{
 };
 use serde::{Deserialize, Serialize};
 use serde_with::skip_serializing_none;
-use tracing::instrument;
+use tracing::{info, instrument};
 
 const MODEL_URL: &str = "https://api.replicate.com/v1/predictions";
 
 #[derive(Deserialize, Debug, Clone)]
-struct Response<Input, Output> {
+pub struct Response<Input, Output> {
     completed_at: Option<String>,
     created_at: Option<String>,
     error: Option<String>,
@@ -49,7 +49,7 @@ const MODEL_VERSION: &str = "328bd9692d29d6781034e3acab8cf3fcb122161e6f5afb896a4
 
 #[skip_serializing_none]
 #[derive(Serialize, Deserialize, Debug, Clone)]
-struct Input {
+pub struct Input {
     prompt: String,
     seed: Option<u32>,
     num_inference_steps: Option<u32>,
@@ -89,12 +89,18 @@ pub async fn draw(prompt: String) -> Response<Input, Output> {
         webhook_completed: None,
     };
 
+    info!(?request);
+
     let api_response = api_call(&request).await.unwrap();
+
+    info!(?api_response);
 
     let response = api_response
         .json::<Response<Input, Output>>()
         .await
         .unwrap();
+
+    info!(?response);
 
     response
 }

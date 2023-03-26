@@ -1,4 +1,7 @@
-use crate::openai_client::{self, reply};
+use crate::{
+    openai_client::{self, reply},
+    replicate_client,
+};
 use dptree::case;
 use serde::Serialize;
 use std::fmt::Display;
@@ -24,6 +27,8 @@ use uuid::Uuid;
 pub enum Command {
     #[command(description = "Keep the conversation going, the bot will keep context until /reset")]
     Chat { text: String },
+    #[command(description = "Create an image using Stable Diffusion v1.5")]
+    Image { text: String },
     #[command(description = "Ask questions in the context of the group conversation")]
     Group { text: String },
     #[command(description = "Wipe chat from the bot's memory")]
@@ -82,7 +87,8 @@ pub fn schema() -> UpdateHandler<anyhow::Error> {
         case![State::Online(msgs)]
             .branch(case![Command::Group { text }].endpoint(group))
             .branch(case![Command::Reset].endpoint(reset))
-            .branch(case![Command::Chat { text }].endpoint(chat)),
+            .branch(case![Command::Chat { text }].endpoint(chat))
+            .branch(case![Command::Image { text }].endpoint(image)),
     );
 
     let msg_handler = Update::filter_message()
@@ -130,6 +136,16 @@ async fn group(bot: Bot, text: String, message: Message, history: History) -> Ha
                 .await?;
         }
     }
+
+    Ok(())
+}
+
+#[instrument]
+async fn image(bot: Bot, text: String, message: Message, history: History) -> HandlerResult {
+    bot.send_chat_action(message.chat.id, teloxide::types::ChatAction::UploadPhoto)
+        .await?;
+
+    let replicate_response = replicate_client::draw(text).await;
 
     Ok(())
 }
