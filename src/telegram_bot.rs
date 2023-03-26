@@ -25,7 +25,7 @@ pub enum Command {
     #[command(description = "Keep the conversation going, the bot will keep context until /reset")]
     Chat { text: String },
     #[command(description = "Ask questions in the context of the group conversation")]
-    Group,
+    Group { text: String },
     #[command(description = "Wipe chat from the bot's memory")]
     Reset,
 }
@@ -80,7 +80,7 @@ impl Display for State {
 pub fn schema() -> UpdateHandler<anyhow::Error> {
     let cmd_handler = filter_command::<Command, _>().branch(
         case![State::Online(msgs)]
-            .branch(case![Command::Group].endpoint(group))
+            .branch(case![Command::Group { text }].endpoint(group))
             .branch(case![Command::Reset].endpoint(reset))
             .branch(case![Command::Chat { text }].endpoint(chat)),
     );
@@ -98,8 +98,8 @@ type InMemDialogue = Dialogue<State, InMemStorage<State>>;
 
 type HandlerResult = Result<(), anyhow::Error>;
 
-async fn group(bot: Bot, message: Message, history: History) -> HandlerResult {
-    let openai_response = openai_client::sumarize(&history.group_history).await;
+async fn group(bot: Bot, text: String, message: Message, history: History) -> HandlerResult {
+    let openai_response = openai_client::group_question(&history.group_history, text).await;
 
     match openai_response {
         Err(e) => {

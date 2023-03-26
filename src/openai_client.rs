@@ -9,7 +9,10 @@ use teloxide::types::Message;
 use tracing::instrument;
 
 #[instrument]
-pub async fn sumarize(messages: &[Message]) -> Result<CreateChatCompletionResponse, OpenAIError> {
+pub async fn group_question(
+    messages: &[Message],
+    question: String,
+) -> Result<CreateChatCompletionResponse, OpenAIError> {
     let client = Client::new();
 
     let system_message = ChatCompletionRequestMessage {
@@ -35,8 +38,8 @@ pub async fn sumarize(messages: &[Message]) -> Result<CreateChatCompletionRespon
     let task_message = ChatCompletionRequestMessage {
         role: async_openai::types::Role::User,
         content: format!(
-            "Can you summarize the following conversation: \n\n '{}' ? ",
-            chat_history
+            "Use the following conversation as context: \n\n ###{}###  \n\n {} ",
+            chat_history, question
         ),
         name: None,
     };
