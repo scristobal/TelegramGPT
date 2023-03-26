@@ -99,6 +99,9 @@ type InMemDialogue = Dialogue<State, InMemStorage<State>>;
 type HandlerResult = Result<(), anyhow::Error>;
 
 async fn group(bot: Bot, text: String, message: Message, history: History) -> HandlerResult {
+    bot.send_chat_action(message.chat.id, teloxide::types::ChatAction::Typing)
+        .await?;
+
     let openai_response = openai_client::group_question(&history.group_history, text).await;
 
     match openai_response {
@@ -137,6 +140,9 @@ async fn reset(
     message: Message,
     mut history: History,
 ) -> HandlerResult {
+    bot.send_chat_action(message.chat.id, teloxide::types::ChatAction::Typing)
+        .await?;
+
     history.bot_history = BotHistory::default();
 
     dialogue.update(State::Online(history)).await?;
@@ -177,6 +183,9 @@ async fn chat(
         content: text,
         name: username,
     });
+
+    bot.send_chat_action(message.chat.id, teloxide::types::ChatAction::Typing)
+        .await?;
 
     let results = reply(
         &history
