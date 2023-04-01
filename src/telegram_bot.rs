@@ -85,9 +85,9 @@ impl Display for State {
 pub fn schema() -> UpdateHandler<anyhow::Error> {
     let cmd_handler = filter_command::<Command, _>().branch(
         case![State::Online(msgs)]
-            .branch(case![Command::Group { text }].endpoint(group))
             .branch(case![Command::Reset].endpoint(reset))
             .branch(case![Command::Chat { text }].endpoint(chat))
+            .branch(case![Command::Group { text }].endpoint(group))
             .branch(case![Command::Image { text }].endpoint(image)),
     );
 
@@ -214,7 +214,6 @@ async fn reset(
 }
 
 async fn do_nothing() -> HandlerResult {
-    // if the bot is muted do nothing
     Ok(())
 }
 
