@@ -130,15 +130,13 @@ async fn group(
             .await?;
         }
         Ok(responses) => {
-            let mut reply_txt = String::new();
+            let reply_text = responses
+                .choices
+                .into_iter()
+                .map(|choice| choice.message.content)
+                .collect::<String>();
 
-            for choice in responses.choices {
-                let result = choice.message.content;
-
-                reply_txt.push_str(&result);
-            }
-
-            bot.send_message(message.chat.id, escape(&reply_txt))
+            bot.send_message(message.chat.id, escape(&reply_text))
                 .parse_mode(ParseMode::MarkdownV2)
                 .await?;
         }
