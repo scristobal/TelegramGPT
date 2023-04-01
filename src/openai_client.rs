@@ -1,3 +1,4 @@
+use crate::telegram_bot;
 use async_openai::{
     error::OpenAIError,
     types::{
@@ -9,14 +10,13 @@ use async_openai::{
 use teloxide::types::Message;
 use tracing::instrument;
 
-use crate::telegram_bot;
-
 #[instrument]
 pub async fn group_question(
     messages: &[Message],
     question: String,
+    client: Option<Client>,
 ) -> Result<CreateChatCompletionResponse, OpenAIError> {
-    let client = Client::new();
+    let client = client.unwrap_or_else(|| Client::new());
 
     let system_message = ChatCompletionRequestMessage {
         role: async_openai::types::Role::System,
@@ -41,14 +41,13 @@ pub async fn group_question(
     let task_message = ChatCompletionRequestMessage {
         role: async_openai::types::Role::User,
         content: format!(
-            "Use the following conversation as context: \n\n ###{}###  \n\n {} ",
-            chat_history, question
+            "{}\n\n use the following conversation as context: \n\n ###{}###  \n\n ",
+            question, chat_history
         ),
         name: None,
     };
 
     let request = CreateChatCompletionRequestArgs::default()
-        .max_tokens(512u16)
         .model("gpt-4")
         .messages(vec![system_message, task_message])
         .build()?;
@@ -83,27 +82,31 @@ impl From<telegram_bot::BotMessage> for async_openai::types::ChatCompletionReque
 #[instrument]
 pub async fn reply(
     messages: &[ChatCompletionRequestMessage],
+    client: Option<Client>,
     system: Option<&str>,
     model: Option<&str>,
 ) -> Result<CreateChatCompletionResponse, OpenAIError> {
-    let client = Client::new();
+    let client = client.unwrap_or_else(|| Client::new());
+
+    let system = system
+        .unwrap_or("You are GTP-4 a Telegram chat bot")
+        .to_string();
 
     let system_msg = ChatCompletionRequestMessage {
         role: async_openai::types::Role::System,
-        content: system
-            .unwrap_or("You are GTP-4 a Telegram chat bot")
-            .to_string(),
+        content: system,
         name: None,
     };
+
+    let model = model.unwrap_or("gpt-4");
 
     let mut request_messages = vec![system_msg];
 
     request_messages.extend_from_slice(messages);
 
     let request = CreateChatCompletionRequestArgs::default()
-        .max_tokens(512u16)
-        .model(model.unwrap_or("gpt-4"))
-        .messages(messages)
+        .model(model)
+        .messages(request_messages)
         .build()?;
 
     client.chat().create(request).await
