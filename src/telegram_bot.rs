@@ -129,12 +129,25 @@ async fn group(
             ).parse_mode(ParseMode::MarkdownV2)
             .await?;
         }
-        Ok(responses) => {
-            let reply_text = responses
+        Ok(response) => {
+            let reply_text = response
                 .choices
                 .into_iter()
                 .map(|choice| choice.message.content)
                 .collect::<String>();
+
+            let mut reply_text = escape(&reply_text);
+
+            if let Some(usage) = response.usage {
+                reply_text.push_str(&format!(
+                    "\n\n`usage {} tokens = {} prompt + {} completion`",
+                    usage.total_tokens, usage.prompt_tokens, usage.completion_tokens
+                ));
+
+                // if usage.total_tokens > 6000 {
+                //     reply_text.push_str("\n`Reaching 8k limit, consider running /reset soon`")
+                // }
+            }
 
             bot.send_message(message.chat.id, escape(&reply_text))
                 .parse_mode(ParseMode::MarkdownV2)
