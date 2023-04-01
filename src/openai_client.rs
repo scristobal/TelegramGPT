@@ -41,14 +41,13 @@ pub async fn group_question(
     let task_message = ChatCompletionRequestMessage {
         role: async_openai::types::Role::User,
         content: format!(
-            "Use the following conversation as context: \n\n ###{}###  \n\n {} ",
-            chat_history, question
+            "{}\n\n use the following conversation as context: \n\n ###{}###  \n\n ",
+            question, chat_history
         ),
         name: None,
     };
 
     let request = CreateChatCompletionRequestArgs::default()
-        .max_tokens(512u16)
         .model("gpt-4")
         .messages(vec![system_message, task_message])
         .build()?;
@@ -106,7 +105,6 @@ pub async fn reply(
     request_messages.extend_from_slice(messages);
 
     let request = CreateChatCompletionRequestArgs::default()
-        .max_tokens(512u16)
         .model(model)
         .messages(request_messages)
         .build()?;

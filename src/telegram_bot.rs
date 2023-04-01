@@ -149,7 +149,7 @@ async fn group(
                 // }
             }
 
-            bot.send_message(message.chat.id, escape(&reply_text))
+            bot.send_message(message.chat.id, (&reply_text))
                 .parse_mode(ParseMode::MarkdownV2)
                 .await?;
         }
@@ -224,6 +224,9 @@ async fn record(
     mut history: History,
 ) -> HandlerResult {
     history.group_history.push(new_message);
+    history
+        .group_history
+        .retain(|message| message.date >= (chrono::Utc::now() - chrono::Duration::days(1)));
     dialogue.update(State::Online(history)).await?;
     Ok(())
 }
