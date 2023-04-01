@@ -14,8 +14,9 @@ use tracing::instrument;
 pub async fn group_question(
     messages: &[Message],
     question: String,
+    client: Option<Client>,
 ) -> Result<CreateChatCompletionResponse, OpenAIError> {
-    let client = Client::new();
+    let client = client.unwrap_or_else(|| Client::new());
 
     let system_message = ChatCompletionRequestMessage {
         role: async_openai::types::Role::System,

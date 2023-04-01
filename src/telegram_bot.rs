@@ -13,7 +13,7 @@ use teloxide::{
     },
     filter_command,
     prelude::*,
-    types::{InputFile, ParseMode},
+    types::{InputFile, InputMedia, InputMediaPhoto, ParseMode},
     utils::{command::BotCommands, markdown::escape},
 };
 use tracing::{error, instrument};
@@ -104,11 +104,18 @@ type InMemDialogue = Dialogue<State, InMemStorage<State>>;
 
 type HandlerResult = Result<(), anyhow::Error>;
 
-async fn group(bot: Bot, text: String, message: Message, history: History) -> HandlerResult {
+async fn group(
+    bot: Bot,
+    client: async_openai::Client,
+    text: String,
+    message: Message,
+    history: History,
+) -> HandlerResult {
     bot.send_chat_action(message.chat.id, teloxide::types::ChatAction::Typing)
         .await?;
 
-    let openai_response = openai_client::group_question(&history.group_history, text).await;
+    let openai_response =
+        openai_client::group_question(&history.group_history, text, Some(client)).await;
 
     match openai_response {
         Err(e) => {
@@ -147,16 +154,28 @@ async fn image(bot: Bot, client: ReplicateClient, text: String, message: Message
     let replicate_response = client.image(text.clone()).await?;
 
     match replicate_response.output {
-        Some(output) if output.is_some() => {
-            for photo_url in output.unwrap_or(vec![]) {
-                bot.send_photo(message.chat.id, InputFile::url(Url::parse(&photo_url)?))
-                    .caption(text.clone())
-                    .await?;
-            }
+        Some(output) => {
+            let outputs = output.unwrap_or(vec![]);
+
+            let media = outputs.iter().filter_map(|photo_url| {
+                let Ok(url) = Url::parse(&photo_url) else {
+                    return None
+                };
+                Some(InputMedia::Photo(InputMediaPhoto::new(InputFile::url(url))))
+            });
+
+            bot.send_media_group(message.chat.id, media).await?;
         }
-        _ => {
-            bot.send_message(message.chat.id, "there was an error")
-                .await?;
+        None => {
+            let error_id = Uuid::new_v4().simple().to_string();
+
+            error!(error_id, ?replicate_response.error);
+
+            bot.send_message(
+                message.chat.id,
+                format!("there was an error processing your request, you can use this ID to track the issue `{}`", error_id),
+            ).parse_mode(ParseMode::MarkdownV2)
+            .await?;
         }
     };
 

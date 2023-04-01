@@ -6,7 +6,6 @@ use serde::{Deserialize, Serialize};
 use serde_with::skip_serializing_none;
 use std::{str::FromStr, time::Duration};
 use tokio::time::sleep;
-use tracing::info;
 
 const MODEL_URL: &str = "https://api.replicate.com/v1/predictions";
 
@@ -14,7 +13,7 @@ const MODEL_URL: &str = "https://api.replicate.com/v1/predictions";
 pub struct ReplicateResponse<ModelInput, ModelOutput> {
     completed_at: Option<String>,
     created_at: Option<String>,
-    error: Option<String>,
+    pub error: Option<String>,
     hardware: Option<String>,
     id: String,
     input: ModelInput,
@@ -56,6 +55,7 @@ pub struct StableDiffusionInput {
     seed: Option<u32>,
     num_inference_steps: Option<u32>,
     guidance_scale: Option<f32>,
+    num_outputs: Option<u32>,
 }
 
 type StableDiffusionOutput = Option<Vec<String>>;
@@ -93,20 +93,15 @@ impl ReplicateClient {
             seed: None,
             num_inference_steps: None,
             guidance_scale: None,
+            num_outputs: Some(4),
         };
-
-        info!(?input);
 
         let request = StableDiffusionRequest {
             version: self.model_version.to_string(),
             input,
         };
 
-        info!(?request);
-
         let response = self.model_request(&request).await?;
-
-        info!(?response);
 
         let job_url = Url::from_str(&response.urls.get)?;
 
@@ -133,12 +128,7 @@ impl ReplicateClient {
             .send()
             .await?;
 
-        info!(?response);
-
-        let response_body = response.json().await;
-
-        info!(?response_body);
-        response_body
+        response.json().await
     }
 
     async fn model_response(&self, url: Url) -> Result<StableDiffusionResponse, reqwest::Error> {
@@ -149,10 +139,6 @@ impl ReplicateClient {
             .send()
             .await?;
 
-        let response_body = response.json().await?;
-
-        info!(?response_body);
-
-        Ok(response_body)
+        response.json().await
     }
 }
