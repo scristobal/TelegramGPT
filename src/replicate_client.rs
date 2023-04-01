@@ -1,9 +1,11 @@
 use reqwest::{
     header::{AUTHORIZATION, CONTENT_TYPE},
-    Client,
+    Client, Url,
 };
 use serde::{Deserialize, Serialize};
 use serde_with::skip_serializing_none;
+use std::{str::FromStr, time::Duration};
+use tokio::time::sleep;
 use tracing::info;
 
 const MODEL_URL: &str = "https://api.replicate.com/v1/predictions";
@@ -18,7 +20,7 @@ pub struct ReplicateResponse<ModelInput, ModelOutput> {
     input: ModelInput,
     logs: Option<String>,
     metrics: Option<Metrics>,
-    output: Option<ModelOutput>,
+    pub output: Option<ModelOutput>,
     started_at: Option<String>,
     status: String,
     urls: Urls,
@@ -61,49 +63,96 @@ type StableDiffusionOutput = Option<Vec<String>>;
 type StableDiffusionRequest = ReplicateRequest<StableDiffusionInput>;
 type StableDiffusionResponse = ReplicateResponse<StableDiffusionInput, StableDiffusionOutput>;
 
-async fn api_call(
-    request: &StableDiffusionRequest,
-) -> Result<StableDiffusionResponse, reqwest::Error> {
-    let client = Client::new();
-
-    let token = std::env::var("REPLICATE_TOKEN").expect("REPLICATE_TOKEN must be set");
-
-    let response = client
-        .post(MODEL_URL.to_string())
-        .header(CONTENT_TYPE, "application/json")
-        .header(AUTHORIZATION, "Token ".to_string() + &token)
-        .json(request)
-        .send()
-        .await?;
-
-    info!(?response);
-
-    let response_body = response.json().await;
-
-    info!(?response_body);
-    response_body
+#[derive(Debug, Clone)]
+pub struct ReplicateClient {
+    http_client: Client,
+    token: String,
+    model_url: Url,
+    model_version: &'static str,
 }
 
-pub async fn draw(prompt: String) -> Result<StableDiffusionResponse, anyhow::Error> {
-    let input = StableDiffusionInput {
-        prompt,
-        seed: None,
-        num_inference_steps: None,
-        guidance_scale: None,
-    };
+impl ReplicateClient {
+    pub fn new() -> Self {
+        let token = std::env::var("REPLICATE_TOKEN").expect("REPLICATE_TOKEN must be set");
 
-    info!(?input);
+        let model_url = Url::from_str(MODEL_URL).unwrap();
 
-    let request = StableDiffusionRequest {
-        version: MODEL_VERSION.to_string(),
-        input,
-    };
+        let mode_version = MODEL_VERSION;
 
-    info!(?request);
+        Self {
+            http_client: Client::new(),
+            token,
+            model_url,
+            model_version: mode_version,
+        }
+    }
 
-    let response = api_call(&request).await?;
+    pub async fn image(&self, prompt: String) -> Result<StableDiffusionResponse, anyhow::Error> {
+        let input = StableDiffusionInput {
+            prompt,
+            seed: None,
+            num_inference_steps: None,
+            guidance_scale: None,
+        };
 
-    info!(?response);
+        info!(?input);
 
-    Ok(response)
+        let request = StableDiffusionRequest {
+            version: self.model_version.to_string(),
+            input,
+        };
+
+        info!(?request);
+
+        let response = self.model_request(&request).await?;
+
+        info!(?response);
+
+        let job_url = Url::from_str(&response.urls.get)?;
+
+        let mut response = self.model_response(job_url.clone()).await?;
+
+        while response.output.is_none() {
+            sleep(Duration::from_millis(1000)).await;
+            response = self.model_response(job_url.clone()).await?;
+        }
+
+        Ok(response)
+    }
+
+    async fn model_request(
+        &self,
+        request: &StableDiffusionRequest,
+    ) -> Result<StableDiffusionResponse, reqwest::Error> {
+        let response = self
+            .http_client
+            .post(self.model_url.clone())
+            .header(CONTENT_TYPE, "application/json")
+            .header(AUTHORIZATION, "Token ".to_string() + &self.token)
+            .json(request)
+            .send()
+            .await?;
+
+        info!(?response);
+
+        let response_body = response.json().await;
+
+        info!(?response_body);
+        response_body
+    }
+
+    async fn model_response(&self, url: Url) -> Result<StableDiffusionResponse, reqwest::Error> {
+        let response = self
+            .http_client
+            .get(url)
+            .header(AUTHORIZATION, "Token ".to_string() + &self.token)
+            .send()
+            .await?;
+
+        let response_body = response.json().await?;
+
+        info!(?response_body);
+
+        Ok(response_body)
+    }
 }

@@ -1,5 +1,6 @@
 use chatlyze::{
     health_checker,
+    replicate_client::ReplicateClient,
     telegram_bot::{schema, Command, State},
 };
 use dotenv::dotenv;
@@ -31,8 +32,13 @@ async fn main() -> Result<()> {
 
     info!("... {} started!", me);
 
+    let storage = InMemStorage::<State>::new();
+
+    let openai_client = async_openai::Client::new();
+    let replicate_client = ReplicateClient::new();
+
     Dispatcher::builder(bot, schema())
-        .dependencies(dptree::deps![InMemStorage::<State>::new()])
+        .dependencies(dptree::deps![storage, openai_client, replicate_client])
         .enable_ctrlc_handler()
         .build()
         .dispatch()

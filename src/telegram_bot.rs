@@ -1,8 +1,9 @@
 use crate::{
     openai_client::{self, reply},
-    replicate_client,
+    replicate_client::ReplicateClient,
 };
 use dptree::case;
+use reqwest::Url;
 use serde::Serialize;
 use std::fmt::Display;
 use teloxide::{
@@ -12,18 +13,17 @@ use teloxide::{
     },
     filter_command,
     prelude::*,
-    types::ParseMode,
+    types::{InputFile, ParseMode},
     utils::{command::BotCommands, markdown::escape},
 };
 use tracing::{error, instrument};
 use uuid::Uuid;
 
-#[derive(BotCommands, Clone)]
+#[derive(BotCommands, Clone, Debug)]
 #[command(
     rename_rule = "lowercase",
     description = "These commands are supported:"
 )]
-#[derive(Debug)]
 pub enum Command {
     #[command(description = "Keep the conversation going, the bot will keep context until /reset")]
     Chat { text: String },
@@ -140,12 +140,25 @@ async fn group(bot: Bot, text: String, message: Message, history: History) -> Ha
     Ok(())
 }
 
-#[instrument]
-async fn image(bot: Bot, text: String, message: Message, history: History) -> HandlerResult {
+async fn image(bot: Bot, client: ReplicateClient, text: String, message: Message) -> HandlerResult {
     bot.send_chat_action(message.chat.id, teloxide::types::ChatAction::UploadPhoto)
         .await?;
 
-    let replicate_response = replicate_client::draw(text).await;
+    let replicate_response = client.image(text.clone()).await?;
+
+    match replicate_response.output {
+        Some(output) if output.is_some() => {
+            for photo_url in output.unwrap_or(vec![]) {
+                bot.send_photo(message.chat.id, InputFile::url(Url::parse(&photo_url)?))
+                    .caption(text.clone())
+                    .await?;
+            }
+        }
+        _ => {
+            bot.send_message(message.chat.id, "there was an error")
+                .await?;
+        }
+    };
 
     Ok(())
 }
@@ -188,6 +201,7 @@ async fn record(
 async fn chat(
     bot: Bot,
     dialogue: InMemDialogue,
+    client: async_openai::Client,
     text: String,
     message: Message,
     mut history: History,
@@ -210,6 +224,7 @@ async fn chat(
             .into_iter()
             .map(|m| m.into())
             .collect::<Vec<_>>(),
+        Some(client),
         None,
         None,
     )
