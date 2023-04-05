@@ -2,6 +2,7 @@ use crate::{
     openai_client::{self, reply},
     replicate_client::ReplicateClient,
 };
+use core::num;
 use dptree::case;
 use reqwest::Url;
 use serde::Serialize;
@@ -13,10 +14,11 @@ use teloxide::{
     },
     filter_command,
     prelude::*,
-    types::{InputFile, InputMedia, InputMediaPhoto, ParseMode},
+    types::{InputFile, InputMedia, InputMediaPhoto, MessageId, ParseMode},
     utils::{command::BotCommands, markdown::escape},
 };
-use tracing::{error, instrument};
+use tokio_stream::StreamExt;
+use tracing::{debug, error, info, instrument};
 use uuid::Uuid;
 
 #[derive(BotCommands, Clone, Debug)]
@@ -274,7 +276,7 @@ async fn chat(
     bot.send_chat_action(message.chat.id, teloxide::types::ChatAction::Typing)
         .await?;
 
-    let results = reply(
+    let response = reply(
         &history
             .bot_history
             .clone()
@@ -287,7 +289,7 @@ async fn chat(
     )
     .await;
 
-    match results {
+    match response {
         Err(e) => {
             let error_id = Uuid::new_v4().simple().to_string();
 
@@ -299,41 +301,55 @@ async fn chat(
             ).parse_mode(ParseMode::MarkdownV2)
             .await?;
         }
-        Ok(results) => {
+        Ok(mut response_stream) => {
             let botname = &bot.get_me().await?.username;
 
-            let mut reply_txt = String::new();
+            let mut text_response = "".to_string();
+            let mut number_sent_lines = 0;
 
-            for choice in results.choices {
-                let result = choice.message.content;
+            while let Some(partial_response) = response_stream.next().await {
+                let partial_response = partial_response?;
 
-                reply_txt.push_str(&result);
+                // info!(?partial_response); // somehow partial_response.usage is always None :|
 
-                history.bot_history.push(BotMessage {
-                    role: Role::Assistant,
-                    content: result,
-                    name: botname.clone(),
-                });
-            }
+                let text = partial_response
+                    .choices
+                    .into_iter()
+                    .filter_map(|choice| choice.delta.content)
+                    .collect::<String>();
 
-            dialogue.update(State::Online(history)).await.unwrap();
+                if text.is_empty() {
+                    continue;
+                }
 
-            reply_txt = escape(&reply_txt);
+                text_response.push_str(&text);
 
-            if let Some(usage) = results.usage {
-                reply_txt.push_str(&format!(
-                    "\n\n`usage {} tokens = {} prompt + {} completion`",
-                    usage.total_tokens, usage.prompt_tokens, usage.completion_tokens
-                ));
+                let lines = text_response.split("\n\n").collect::<Vec<_>>();
 
-                if usage.total_tokens > 6000 {
-                    reply_txt.push_str("\n`Reaching 8k limit, consider running /reset soon`")
+                while lines.len() > 1 && (number_sent_lines < lines.len() - 1) {
+                    let line = lines[number_sent_lines];
+
+                    if !line.is_empty() {
+                        bot.send_message(message.chat.id, line).await?;
+                    };
+                    bot.send_chat_action(message.chat.id, teloxide::types::ChatAction::Typing)
+                        .await?;
+
+                    number_sent_lines += 1;
                 }
             }
+            let lines = text_response.lines().collect::<Vec<_>>();
 
-            bot.send_message(message.chat.id, &reply_txt)
-                .parse_mode(ParseMode::MarkdownV2)
+            bot.send_message(message.chat.id, lines.last().unwrap().to_string())
                 .await?;
+
+            history.bot_history.push(BotMessage {
+                role: Role::Assistant,
+                content: text_response,
+                name: botname.clone(),
+            });
+
+            dialogue.update(State::Online(history)).await.unwrap();
         }
     };
 

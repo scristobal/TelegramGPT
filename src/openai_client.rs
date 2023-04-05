@@ -3,13 +3,13 @@ use async_openai::{
     error::OpenAIError,
     types::{
         ChatCompletionRequestMessage, ChatCompletionRequestMessageArgs,
-        CreateChatCompletionRequestArgs, CreateChatCompletionResponse,
+        ChatCompletionResponseStream, CreateChatCompletionRequestArgs,
+        CreateChatCompletionResponse,
     },
     Client,
 };
 use teloxide::types::Message;
 use tiktoken_rs::get_chat_completion_max_tokens;
-use tokio_stream::StreamExt;
 use tracing::instrument;
 
 #[instrument]
@@ -88,7 +88,7 @@ pub async fn reply(
     client: Option<Client>,
     system: Option<&str>,
     model: Option<&str>,
-) -> Result<CreateChatCompletionResponse, OpenAIError> {
+) -> Result<ChatCompletionResponseStream, OpenAIError> {
     let client = client.unwrap_or_else(Client::new);
 
     let system = system
@@ -123,17 +123,5 @@ pub async fn reply(
         .messages(request_messages)
         .build()?;
 
-    // let mut response = client.chat().create_stream(request).await?;
-
-    // while let Some(res) = response.next().await {
-    //     let res = res?;
-
-    //     for choice in res.choices {
-    //         let text = choice.delta.content;
-    //     }
-    // }
-
-    // todo!()
-
-    client.chat().create(request).await
+    client.chat().create_stream(request).await
 }
