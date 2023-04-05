@@ -94,7 +94,7 @@ pub fn schema() -> UpdateHandler<anyhow::Error> {
     let msg_handler = Update::filter_message()
         .branch(case![State::Offline].endpoint(do_nothing))
         .branch(cmd_handler)
-        .branch(case![State::Online(msgs)].endpoint(record))
+        .branch(case![State::Online(msgs)].endpoint(chat_or_record))
         .endpoint(do_nothing);
 
     dialogue::enter::<Update, InMemStorage<State>, State, _>().branch(msg_handler)
@@ -149,7 +149,7 @@ async fn group(
                 // }
             }
 
-            bot.send_message(message.chat.id, (&reply_text))
+            bot.send_message(message.chat.id, &reply_text)
                 .parse_mode(ParseMode::MarkdownV2)
                 .await?;
         }
@@ -169,7 +169,7 @@ async fn image(bot: Bot, client: ReplicateClient, text: String, message: Message
             let outputs = output.unwrap_or(vec![]);
 
             let media = outputs.iter().filter_map(|photo_url| {
-                let Ok(url) = Url::parse(&photo_url) else {
+                let Ok(url) = Url::parse(photo_url) else {
                     return None
                 };
                 Some(InputMedia::Photo(InputMediaPhoto::new(InputFile::url(url))))
@@ -215,6 +215,31 @@ async fn reset(
 
 async fn do_nothing() -> HandlerResult {
     Ok(())
+}
+
+// TODO: change to a .branch in dptree
+async fn chat_or_record(
+    bot: Bot,
+    dialogue: InMemDialogue,
+    client: async_openai::Client,
+    message: Message,
+    history: History,
+) -> HandlerResult {
+    let text = message.text();
+
+    if message.chat.is_private() && text.is_some() {
+        chat(
+            bot,
+            dialogue,
+            client,
+            text.unwrap().to_string(),
+            message,
+            history,
+        )
+        .await
+    } else {
+        record(dialogue, message, history).await
+    }
 }
 
 async fn record(

@@ -8,6 +8,8 @@ use async_openai::{
     Client,
 };
 use teloxide::types::Message;
+use tiktoken_rs::get_chat_completion_max_tokens;
+use tokio_stream::StreamExt;
 use tracing::instrument;
 
 #[instrument]
@@ -16,7 +18,7 @@ pub async fn group_question(
     question: String,
     client: Option<Client>,
 ) -> Result<CreateChatCompletionResponse, OpenAIError> {
-    let client = client.unwrap_or_else(|| Client::new());
+    let client = client.unwrap_or_else(Client::new);
 
     let system_message = ChatCompletionRequestMessage {
         role: async_openai::types::Role::System,
@@ -54,7 +56,6 @@ pub async fn group_question(
 
     client.chat().create(request).await
 }
-
 impl From<telegram_bot::Role> for async_openai::types::Role {
     fn from(val: telegram_bot::Role) -> Self {
         match val {
@@ -79,6 +80,8 @@ impl From<telegram_bot::BotMessage> for async_openai::types::ChatCompletionReque
     }
 }
 
+const MAX_TOKENS_COMPLETION: u16 = 1_000;
+
 #[instrument]
 pub async fn reply(
     messages: &[ChatCompletionRequestMessage],
@@ -86,7 +89,7 @@ pub async fn reply(
     system: Option<&str>,
     model: Option<&str>,
 ) -> Result<CreateChatCompletionResponse, OpenAIError> {
-    let client = client.unwrap_or_else(|| Client::new());
+    let client = client.unwrap_or_else(Client::new);
 
     let system = system
         .unwrap_or("You are GTP-4 a Telegram chat bot")
@@ -100,14 +103,37 @@ pub async fn reply(
 
     let model = model.unwrap_or("gpt-4");
 
-    let mut request_messages = vec![system_msg];
+    let mut request_messages = Vec::new();
 
-    request_messages.extend_from_slice(messages);
+    request_messages.push(system_msg);
+
+    for message in messages.iter() {
+        let Ok(max_tokens) = get_chat_completion_max_tokens("gpt-4", &request_messages) else { break };
+
+        if max_tokens < (MAX_TOKENS_COMPLETION as usize) {
+            break;
+        };
+
+        request_messages.push(message.clone());
+    }
 
     let request = CreateChatCompletionRequestArgs::default()
+        .max_tokens(MAX_TOKENS_COMPLETION)
         .model(model)
         .messages(request_messages)
         .build()?;
+
+    // let mut response = client.chat().create_stream(request).await?;
+
+    // while let Some(res) = response.next().await {
+    //     let res = res?;
+
+    //     for choice in res.choices {
+    //         let text = choice.delta.content;
+    //     }
+    // }
+
+    // todo!()
 
     client.chat().create(request).await
 }
