@@ -6,7 +6,7 @@ use core::num;
 use dptree::case;
 use reqwest::Url;
 use serde::Serialize;
-use std::fmt::Display;
+use std::{collections::VecDeque, fmt::Display};
 use teloxide::{
     dispatching::{
         dialogue::{self, InMemStorage},
@@ -304,48 +304,58 @@ async fn chat(
         Ok(mut response_stream) => {
             let botname = &bot.get_me().await?.username;
 
-            let mut text_response = "".to_string();
-            let mut number_sent_lines = 0;
+            let mut full_text = "".to_string();
+            let mut remainding_text = "".to_string();
 
             while let Some(partial_response) = response_stream.next().await {
                 let partial_response = partial_response?;
 
                 // info!(?partial_response); // somehow partial_response.usage is always None :|
 
-                let text = partial_response
+                let Some(text) = partial_response
                     .choices
-                    .into_iter()
-                    .filter_map(|choice| choice.delta.content)
-                    .collect::<String>();
+                    .first()
+                    .and_then(|choice| choice.delta.content.as_ref()) else {continue;};
 
                 if text.is_empty() {
                     continue;
+                };
+
+                full_text.push_str(text);
+                remainding_text.push_str(text);
+
+                info!(?full_text);
+
+                let r = remainding_text.clone();
+
+                let mut blocks = r
+                    .split_inclusive("\n\n")
+                    .filter(|block| !block.is_empty())
+                    .collect::<VecDeque<_>>();
+
+                info!(?blocks);
+
+                while let Some(block) = blocks.pop_front() {
+                    info!(?block);
+
+                    if !blocks.is_empty() {
+                        bot.send_message(message.chat.id, block).await?;
+
+                        bot.send_chat_action(message.chat.id, teloxide::types::ChatAction::Typing)
+                            .await?;
+                    } else {
+                        remainding_text = block.to_string();
+                    }
                 }
 
-                text_response.push_str(&text);
-
-                let lines = text_response.split("\n\n").collect::<Vec<_>>();
-
-                while lines.len() > 1 && (number_sent_lines < lines.len() - 1) {
-                    let line = lines[number_sent_lines];
-
-                    if !line.is_empty() {
-                        bot.send_message(message.chat.id, line).await?;
-                    };
-                    bot.send_chat_action(message.chat.id, teloxide::types::ChatAction::Typing)
-                        .await?;
-
-                    number_sent_lines += 1;
-                }
+                info!(?remainding_text);
             }
-            let lines = text_response.lines().collect::<Vec<_>>();
 
-            bot.send_message(message.chat.id, lines.last().unwrap().to_string())
-                .await?;
+            bot.send_message(message.chat.id, remainding_text).await?;
 
             history.bot_history.push(BotMessage {
                 role: Role::Assistant,
-                content: text_response,
+                content: full_text,
                 name: botname.clone(),
             });
 
