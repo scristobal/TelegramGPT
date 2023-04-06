@@ -2,11 +2,13 @@ use crate::{
     openai_client::{self, reply},
     replicate_client::ReplicateClient,
 };
-use core::num;
 use dptree::case;
 use reqwest::Url;
 use serde::Serialize;
-use std::{collections::VecDeque, fmt::Display, time::Duration};
+use std::{
+    fmt::Display,
+    time::{Duration, Instant},
+};
 use teloxide::{
     dispatching::{
         dialogue::{self, InMemStorage},
@@ -14,11 +16,11 @@ use teloxide::{
     },
     filter_command,
     prelude::*,
-    types::{InputFile, InputMedia, InputMediaPhoto, MessageId, ParseMode},
+    types::{InputFile, InputMedia, InputMediaPhoto, ParseMode},
     utils::{command::BotCommands, markdown::escape},
 };
 use tokio_stream::StreamExt;
-use tracing::{debug, error, info, instrument};
+use tracing::{error, instrument};
 use uuid::Uuid;
 
 #[derive(BotCommands, Clone, Debug)]
@@ -301,14 +303,12 @@ async fn chat(
             ).parse_mode(ParseMode::MarkdownV2)
             .await?;
         }
-        Ok(response_stream) => {
+        Ok(mut response_stream) => {
             let botname = &bot.get_me().await?.username;
 
-            let mut bot_message: Option<Message> = None;
+            let mut full_text = "".to_string();
 
-            let response_stream = response_stream.throttle(Duration::from_secs(1));
-
-            tokio::pin!(response_stream);
+            let mut now = Instant::now();
 
             while let Some(partial_response) = response_stream.next().await {
                 let partial_response = partial_response?;
@@ -320,31 +320,23 @@ async fn chat(
                     .first()
                     .and_then(|choice| choice.delta.content.as_ref()) else {continue;};
 
-                if delta_text.is_empty() {
-                    continue;
-                };
+                full_text.push_str(delta_text);
 
-                bot_message = Some(match bot_message {
-                    Some(bot_message) => {
-                        let mut text = bot_message.text().unwrap_or("").to_string();
+                let elapsed_time = now.elapsed();
 
-                        text.push_str(delta_text);
+                if elapsed_time > Duration::from_secs(1) {
+                    bot.send_chat_action(message.chat.id, teloxide::types::ChatAction::Typing)
+                        .await?;
 
-                        bot.edit_message_text(message.chat.id, bot_message.id, text)
-                            .await?
-                    }
-                    None => bot.send_message(message.chat.id, delta_text).await?,
-                });
-
-                bot.send_chat_action(message.chat.id, teloxide::types::ChatAction::Typing)
-                    .await?;
+                    now = Instant::now();
+                }
             }
 
-            let Some(bot_message) = bot_message else {return Ok(())};
+            bot.send_message(message.chat.id, &full_text).await?;
 
             history.bot_history.push(BotMessage {
                 role: Role::Assistant,
-                content: bot_message.text().unwrap_or("").to_string(),
+                content: full_text,
                 name: botname.clone(),
             });
 
