@@ -1,61 +1,13 @@
-use crate::telegram_bot;
 use async_openai::{
     error::OpenAIError,
     types::{
-        ChatCompletionRequestMessage, ChatCompletionRequestMessageArgs,
-        ChatCompletionResponseStream, CreateChatCompletionRequestArgs,
-        CreateChatCompletionResponse,
+        ChatCompletionRequestMessage, ChatCompletionResponseStream,
+        CreateChatCompletionRequestArgs, Role,
     },
     Client,
 };
-use teloxide::types::Message;
 use tiktoken_rs::get_chat_completion_max_tokens;
 use tracing::instrument;
-
-#[instrument]
-pub async fn group_question(
-    messages: &[Message],
-    question: String,
-    client: Option<Client>,
-) -> Result<CreateChatCompletionResponse, OpenAIError> {
-    let client = client.unwrap_or_else(Client::new);
-
-    let system_message = ChatCompletionRequestMessage {
-        role: async_openai::types::Role::System,
-        content: "You are a Telegram chat bot that helps humans to understand what is happening or has happened in group chats"
-            .to_string(),
-        name: None,
-    };
-
-    let mut chat_history = String::new();
-
-    for message in messages {
-        let username = message.from().and_then(|user| user.username.clone());
-        let message_text = message.text();
-        let message_time = message.date.naive_local();
-
-        if let (Some(username), Some(message_text)) = (username, message_text) {
-            chat_history
-                .push_str(format!("{} [{}]: {}\n", username, message_time, message_text).as_str())
-        }
-    }
-
-    let task_message = ChatCompletionRequestMessage {
-        role: async_openai::types::Role::User,
-        content: format!(
-            "{}\n\n use the following conversation as context: \n\n ###{}###  \n\n ",
-            question, chat_history
-        ),
-        name: None,
-    };
-
-    let request = CreateChatCompletionRequestArgs::default()
-        .model("gpt-4")
-        .messages(vec![system_message, task_message])
-        .build()?;
-
-    client.chat().create(request).await
-}
 
 const MAX_TOKENS_COMPLETION: u16 = 1_000;
 
@@ -73,7 +25,7 @@ pub async fn reply(
         .to_string();
 
     let system_msg = ChatCompletionRequestMessage {
-        role: async_openai::types::Role::System,
+        role: Role::System,
         content: system,
         name: None,
     };
