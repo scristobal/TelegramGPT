@@ -1,5 +1,8 @@
 use crate::openai_client::reply;
-use async_openai::types::{ChatCompletionRequestMessage, ChatCompletionRequestMessageArgs};
+use async_openai::{
+    types::{ChatCompletionRequestMessage, ChatCompletionRequestMessageArgs, Role},
+    Client,
+};
 use dptree::case;
 use std::time::{Duration, Instant};
 use teloxide::{
@@ -10,7 +13,6 @@ use teloxide::{
     filter_command,
     payloads::SendMessageSetters,
     prelude::Dialogue,
-    prelude::*,
     requests::Requester,
     types::{ChatAction, Message, ParseMode, Update},
     utils::command::BotCommands,
@@ -26,10 +28,10 @@ use uuid::Uuid;
     description = "These commands are supported:"
 )]
 pub enum Command {
-    #[command(description = "Keep the conversation going, the bot will keep context until /reset")]
+    #[command(description = "Starts a new conversation, ie. wipe bot's memory")]
+    Start,
+    #[command(description = "Send a message to the bot, required only on groups")]
     Chat { text: String },
-    #[command(description = "Wipe chat from the bot's memory")]
-    Reset,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -39,13 +41,19 @@ pub struct State {
 
 pub fn schema() -> UpdateHandler<anyhow::Error> {
     let cmd_handler = filter_command::<Command, _>()
-        .branch(case![Command::Reset].endpoint(reset))
+        .branch(case![Command::Start].endpoint(reset))
         .branch(case![Command::Chat { text }].endpoint(chat));
 
     let msg_handler = Update::filter_message()
         .branch(cmd_handler)
-        .filter(|message: Message| message.chat.is_private())
-        .endpoint(chat_private);
+        .filter_map(|message: Message| {
+            if message.chat.is_private() {
+                message.text().map(|text| text.to_string())
+            } else {
+                None
+            }
+        })
+        .endpoint(chat);
 
     dialogue::enter::<Update, InMemStorage<State>, State, _>().branch(msg_handler)
 }
@@ -59,7 +67,7 @@ async fn reset(bot: Bot, dialogue: InMemDialogue, message: Message) -> HandlerRe
 
     dialogue.update(State::default()).await?;
 
-    bot.send_message(message.chat.id, "`Bot chat history has been erased` ✅")
+    bot.send_message(message.chat.id, "`Starting a new conversation`")
         .parse_mode(ParseMode::MarkdownV2)
         .await?;
 
@@ -67,22 +75,10 @@ async fn reset(bot: Bot, dialogue: InMemDialogue, message: Message) -> HandlerRe
 }
 
 #[instrument]
-async fn chat_private(
-    bot: Bot,
-    dialogue: InMemDialogue,
-    client: async_openai::Client,
-    message: Message,
-) -> HandlerResult {
-    let text = message.text().unwrap_or_default().to_string();
-
-    chat(bot, dialogue, client, text, message).await
-}
-
-#[instrument]
 async fn chat(
     bot: Bot,
     dialogue: InMemDialogue,
-    client: async_openai::Client,
+    client: Client,
     text: String,
     message: Message,
 ) -> HandlerResult {
@@ -94,7 +90,7 @@ async fn chat(
     let State { mut chat_history } = dialogue.get().await?.unwrap_or_default();
 
     let new_message = ChatCompletionRequestMessage {
-        role: async_openai::types::Role::User,
+        role: Role::User,
         content: text,
         name: username,
     };
@@ -145,7 +141,7 @@ async fn chat(
             bot.send_message(message.chat.id, &full_text).await?;
 
             let bot_message = ChatCompletionRequestMessageArgs::default()
-                .role(async_openai::types::Role::Assistant)
+                .role(Role::Assistant)
                 .content(&full_text)
                 .build()
                 .unwrap();
