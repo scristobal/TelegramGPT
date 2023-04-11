@@ -65,7 +65,7 @@ async fn reset(bot: Bot, dialogue: InMemDialogue, message: Message) -> HandlerRe
     bot.send_chat_action(message.chat.id, teloxide::types::ChatAction::Typing)
         .await?;
 
-    dialogue.update(State::default()).await?;
+    dialogue.reset().await?;
 
     bot.send_message(message.chat.id, "`Starting a new conversation`")
         .parse_mode(ParseMode::MarkdownV2)
