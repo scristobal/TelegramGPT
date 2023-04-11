@@ -1,6 +1,6 @@
 use crate::openai_client::reply;
 use async_openai::{
-    types::{ChatCompletionRequestMessage, ChatCompletionRequestMessageArgs, Role},
+    types::{ChatCompletionRequestMessage, Role},
     Client,
 };
 use dptree::case;
@@ -28,10 +28,8 @@ use uuid::Uuid;
     description = "These commands are supported:"
 )]
 pub enum Command {
-    #[command(description = "Starts a new conversation, ie. wipe bot's memory")]
+    #[command(description = "Start a new conversation")]
     Start,
-    #[command(description = "Send a message to the bot, required only on groups")]
-    Chat { text: String },
 }
 
 #[derive(Debug, Clone, Default)]
@@ -40,20 +38,9 @@ pub struct State {
 }
 
 pub fn schema() -> UpdateHandler<anyhow::Error> {
-    let cmd_handler = filter_command::<Command, _>()
-        .branch(case![Command::Start].endpoint(reset))
-        .branch(case![Command::Chat { text }].endpoint(chat));
+    let cmd_handler = filter_command::<Command, _>().branch(case![Command::Start].endpoint(reset));
 
-    let msg_handler = Update::filter_message()
-        .branch(cmd_handler)
-        .filter_map(|message: Message| {
-            if message.chat.is_private() {
-                message.text().map(|text| text.to_string())
-            } else {
-                None
-            }
-        })
-        .endpoint(chat);
+    let msg_handler = Update::filter_message().branch(cmd_handler).endpoint(chat);
 
     dialogue::enter::<Update, InMemStorage<State>, State, _>().branch(msg_handler)
 }
@@ -67,9 +54,11 @@ async fn reset(bot: Bot, dialogue: InMemDialogue, message: Message) -> HandlerRe
 
     dialogue.reset().await?;
 
-    bot.send_message(message.chat.id, "`Starting a new conversation`")
-        .parse_mode(ParseMode::MarkdownV2)
-        .await?;
+    bot.send_message(
+        message.chat.id,
+        "Starting a new conversation. Reply this message to begin.",
+    )
+    .await?;
 
     Ok(())
 }
@@ -79,7 +68,6 @@ async fn chat(
     bot: Bot,
     dialogue: InMemDialogue,
     client: Client,
-    text: String,
     message: Message,
 ) -> HandlerResult {
     let username = message.from().and_then(|user| user.username.clone());
@@ -91,7 +79,7 @@ async fn chat(
 
     let new_message = ChatCompletionRequestMessage {
         role: Role::User,
-        content: text,
+        content: message.text().unwrap_or("").to_string(),
         name: username,
     };
 
@@ -140,11 +128,13 @@ async fn chat(
 
             bot.send_message(message.chat.id, &full_text).await?;
 
-            let bot_message = ChatCompletionRequestMessageArgs::default()
-                .role(Role::Assistant)
-                .content(&full_text)
-                .build()
-                .unwrap();
+            let botname = bot.get_me().await?.user.username;
+
+            let bot_message = ChatCompletionRequestMessage {
+                role: Role::Assistant,
+                content: full_text,
+                name: botname,
+            };
 
             chat_history.push(bot_message);
 
