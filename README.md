@@ -1,4 +1,6 @@
-# Chatlyze 🤖💬
+# TelegramGPT 🤖💬
+
+Like ChatGPT but in Telegram
 
 A Telegram bot that uses OpenAI's chat completion API in the backend. That is the same backend as ChatGPT.
 
