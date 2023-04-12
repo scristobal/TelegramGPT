@@ -1,6 +1,6 @@
-# fly.toml file generated for telegram-gpt on 2023-03-19T21:10:31+01:00
+# fly.toml file generated for scristobal-telegram-gpt on 2023-04-12T09:36:24+01:00
 
-app = "telegram-gpt"
+app = "scristobal-telegram-gpt"
 kill_signal = "SIGINT"
 kill_timeout = 5
 primary_region = "mad"
