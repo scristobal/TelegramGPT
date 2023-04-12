@@ -2,9 +2,13 @@ use dotenv::dotenv;
 use std::io::Result;
 use telegram_gpt::{
     health_checker,
-    telegram_bot::{schema, Command, State},
+    telegram_bot::{schema, Command},
 };
-use teloxide::{dispatching::dialogue::InMemStorage, prelude::*, utils::command::BotCommands};
+use teloxide::{
+    dispatching::dialogue::{serializer::Bincode, RedisStorage},
+    prelude::*,
+    utils::command::BotCommands,
+};
 use tracing::info;
 
 #[tokio::main]
@@ -31,7 +35,11 @@ async fn main() -> Result<()> {
 
     info!("... {} started!", me);
 
-    let storage = InMemStorage::<State>::new();
+    let redis_url = std::env::var("REDIS_URL").expect("REDIS_URL not set");
+
+    let storage = RedisStorage::open(redis_url, Bincode)
+        .await
+        .expect("Failed to open redis storage");
 
     let openai_client = async_openai::Client::new();
 

@@ -4,10 +4,11 @@ use async_openai::{
     Client,
 };
 use dptree::case;
+use serde::{Deserialize, Serialize};
 use std::time::{Duration, Instant};
 use teloxide::{
     dispatching::{
-        dialogue::{self, InMemStorage},
+        dialogue::{self, serializer::Bincode, RedisStorage},
         UpdateFilterExt, UpdateHandler,
     },
     filter_command,
@@ -19,7 +20,7 @@ use teloxide::{
     Bot,
 };
 use tokio_stream::StreamExt;
-use tracing::{error, instrument};
+use tracing::error;
 use uuid::Uuid;
 
 #[derive(BotCommands, Clone, Debug)]
@@ -32,7 +33,7 @@ pub enum Command {
     Start,
 }
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct State {
     chat_history: Vec<ChatCompletionRequestMessage>,
 }
@@ -42,13 +43,13 @@ pub fn schema() -> UpdateHandler<anyhow::Error> {
 
     let msg_handler = Update::filter_message().branch(cmd_handler).endpoint(chat);
 
-    dialogue::enter::<Update, InMemStorage<State>, State, _>().branch(msg_handler)
+    dialogue::enter::<Update, RedisStorage<Bincode>, State, _>().branch(msg_handler)
 }
 
-type InMemDialogue = Dialogue<State, InMemStorage<State>>;
+type RedisDialogue = Dialogue<State, RedisStorage<Bincode>>;
 type HandlerResult = Result<(), anyhow::Error>;
 
-async fn reset(bot: Bot, dialogue: InMemDialogue, message: Message) -> HandlerResult {
+async fn reset(bot: Bot, dialogue: RedisDialogue, message: Message) -> HandlerResult {
     bot.send_chat_action(message.chat.id, teloxide::types::ChatAction::Typing)
         .await?;
 
@@ -63,10 +64,9 @@ async fn reset(bot: Bot, dialogue: InMemDialogue, message: Message) -> HandlerRe
     Ok(())
 }
 
-#[instrument]
 async fn chat(
     bot: Bot,
-    dialogue: InMemDialogue,
+    dialogue: RedisDialogue,
     client: Client,
     message: Message,
 ) -> HandlerResult {
