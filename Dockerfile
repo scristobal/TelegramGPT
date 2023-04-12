@@ -9,6 +9,6 @@ RUN cargo build --release
 
 FROM rust:1.67.1-slim-bullseye
 
-COPY --from=builder /app/src/target/release/chatlyze /usr/local/bin/
+COPY --from=builder /app/src/target/release/telegram-gpt /usr/local/bin/
 
-CMD ["chatlyze"]
+CMD ["telegram-gpt"]

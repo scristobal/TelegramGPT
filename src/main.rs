@@ -1,9 +1,9 @@
-use chatlyze::{
+use dotenv::dotenv;
+use std::io::Result;
+use telegram_gpt::{
     health_checker,
     telegram_bot::{schema, Command, State},
 };
-use dotenv::dotenv;
-use std::io::Result;
 use teloxide::{dispatching::dialogue::InMemStorage, prelude::*, utils::command::BotCommands};
 use tracing::info;
 

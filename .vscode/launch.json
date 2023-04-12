@@ -7,16 +7,11 @@
         {
             "type": "lldb",
             "request": "launch",
-            "name": "Debug unit tests in library 'chatlyze'",
+            "name": "Debug unit tests in library 'telegram-gpt'",
             "cargo": {
-                "args": [
-                    "test",
-                    "--no-run",
-                    "--lib",
-                    "--package=chatlyze"
-                ],
+                "args": ["test", "--no-run", "--lib", "--package=telegram-gpt"],
                 "filter": {
-                    "name": "chatlyze",
+                    "name": "telegram-gpt",
                     "kind": "lib"
                 }
             },
@@ -26,15 +21,11 @@
         {
             "type": "lldb",
             "request": "launch",
-            "name": "Debug executable 'chatlyze'",
+            "name": "Debug executable 'telegram-gpt'",
             "cargo": {
-                "args": [
-                    "build",
-                    "--bin=chatlyze",
-                    "--package=chatlyze"
-                ],
+                "args": ["build", "--bin=telegram-gpt", "--package=telegram-gpt"],
                 "filter": {
-                    "name": "chatlyze",
+                    "name": "telegram-gpt",
                     "kind": "bin"
                 }
             },
@@ -44,16 +35,11 @@
         {
             "type": "lldb",
             "request": "launch",
-            "name": "Debug unit tests in executable 'chatlyze'",
+            "name": "Debug unit tests in executable 'telegram-gpt'",
             "cargo": {
-                "args": [
-                    "test",
-                    "--no-run",
-                    "--bin=chatlyze",
-                    "--package=chatlyze"
-                ],
+                "args": ["test", "--no-run", "--bin=telegram-gpt", "--package=telegram-gpt"],
                 "filter": {
-                    "name": "chatlyze",
+                    "name": "telegram-gpt",
                     "kind": "bin"
                 }
             },

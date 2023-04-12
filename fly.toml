@@ -1,6 +1,6 @@
-# fly.toml file generated for chatlyze on 2023-03-19T21:10:31+01:00
+# fly.toml file generated for telegram-gpt on 2023-03-19T21:10:31+01:00
 
-app = "chatlyze"
+app = "telegram-gpt"
 kill_signal = "SIGINT"
 kill_timeout = 5
 primary_region = "mad"
