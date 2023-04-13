@@ -50,16 +50,22 @@ type RedisDialogue = Dialogue<State, RedisStorage<Bincode>>;
 type HandlerResult = Result<(), anyhow::Error>;
 
 async fn reset(bot: Bot, dialogue: RedisDialogue, message: Message) -> HandlerResult {
-    bot.send_chat_action(message.chat.id, teloxide::types::ChatAction::Typing)
+    let chat_id = message.chat.id;
+
+    bot.send_chat_action(chat_id, teloxide::types::ChatAction::Typing)
         .await?;
 
     dialogue.reset().await?;
 
-    bot.send_message(
-        message.chat.id,
-        "Starting a new conversation. Reply this message to begin.",
-    )
-    .await?;
+    let confirmation_text = "Starting a new conversation. Reply this message to begin.";
+
+    if !message.chat.is_private() {
+        bot.send_message(chat_id, confirmation_text)
+            .reply_to_message_id(message.id)
+            .await?;
+    } else {
+        bot.send_message(chat_id, confirmation_text).await?;
+    }
 
     Ok(())
 }
@@ -72,8 +78,9 @@ async fn chat(
 ) -> HandlerResult {
     let username = message.from().and_then(|user| user.username.clone());
 
-    bot.send_chat_action(message.chat.id, ChatAction::Typing)
-        .await?;
+    let chat_id = message.chat.id;
+
+    bot.send_chat_action(chat_id, ChatAction::Typing).await?;
 
     let State { mut chat_history } = dialogue.get().await?.unwrap_or_default();
 
@@ -92,12 +99,18 @@ async fn chat(
             let error_id = Uuid::new_v4().simple().to_string();
 
             error!(error_id, ?e);
+            let error_text = format!("there was an error processing your request, you can use this ID to track the issue `{}`", error_id);
 
-            bot.send_message(
-                message.chat.id,
-                format!("there was an error processing your request, you can use this ID to track the issue `{}`", error_id),
-            ).parse_mode(ParseMode::MarkdownV2)
-            .await?;
+            if !message.chat.is_private() {
+                bot.send_message(chat_id, error_text)
+                    .reply_to_message_id(message.id)
+                    .parse_mode(ParseMode::MarkdownV2)
+                    .await?;
+            } else {
+                bot.send_message(chat_id, error_text)
+                    .parse_mode(ParseMode::MarkdownV2)
+                    .await?;
+            }
         }
         Ok(mut response_stream) => {
             let mut full_text = "".to_string();
@@ -119,14 +132,19 @@ async fn chat(
                 let elapsed_time = now.elapsed();
 
                 if elapsed_time > Duration::from_secs(1) {
-                    bot.send_chat_action(message.chat.id, ChatAction::Typing)
-                        .await?;
+                    bot.send_chat_action(chat_id, ChatAction::Typing).await?;
 
                     now = Instant::now();
                 }
             }
 
-            bot.send_message(message.chat.id, &full_text).await?;
+            if !message.chat.is_private() {
+                bot.send_message(chat_id, &full_text)
+                    .reply_to_message_id(message.id)
+                    .await?;
+            } else {
+                bot.send_message(chat_id, &full_text).await?;
+            }
 
             let botname = bot.get_me().await?.user.username;
 
