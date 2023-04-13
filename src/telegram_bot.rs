@@ -82,7 +82,7 @@ async fn chat(
 
     bot.send_chat_action(chat_id, ChatAction::Typing).await?;
 
-    let State { mut chat_history } = dialogue.get().await?.unwrap_or_default();
+    let State { mut chat_history } = dialogue.get_or_default().await?;
 
     let new_message = ChatCompletionRequestMessage {
         role: Role::User,
