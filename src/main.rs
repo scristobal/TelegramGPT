@@ -43,15 +43,16 @@ async fn main() -> Result<()> {
     let redis_url = std::env::var("REDIS_URL");
     let sqlite_file = std::env::var("SQLITE_FILE");
 
-    let storage: StateStorage = match redis_url {
-        Ok(url) => RedisStorage::open(url, Bincode).await.unwrap().erase(),
-        Err(_) => match sqlite_file {
-            Ok(filename) => SqliteStorage::open(&filename, Json)
-                .await
-                .expect("Failed to open redis storage")
-                .erase(),
-            Err(_) => InMemStorage::<State>::new().erase(),
-        },
+    let storage: StateStorage = match (redis_url, sqlite_file) {
+        (Ok(url), _) => RedisStorage::open(url, Bincode)
+            .await
+            .expect("Failed to connect to Redis")
+            .erase(),
+        (_, Ok(filename)) => SqliteStorage::open(&filename, Json)
+            .await
+            .expect("Failed to open sqlite storage")
+            .erase(),
+        (_, _) => InMemStorage::<State>::new().erase(),
     };
 
     let openai_client = async_openai::Client::new();
