@@ -1,15 +1,20 @@
 use dotenv::dotenv;
-use std::io::Result;
+use std::{io::Result, sync::Arc};
 use telegram_gpt::{
     health_checker,
-    telegram_bot::{schema, Command},
+    telegram_bot::{schema, Command, State},
 };
 use teloxide::{
-    dispatching::dialogue::{serializer::Bincode, RedisStorage},
+    dispatching::dialogue::{
+        serializer::{Bincode, Json},
+        ErasedStorage, InMemStorage, RedisStorage, SqliteStorage, Storage,
+    },
     prelude::*,
     utils::command::BotCommands,
 };
 use tracing::info;
+
+type StateStorage = Arc<ErasedStorage<State>>;
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -35,11 +40,19 @@ async fn main() -> Result<()> {
 
     info!("... {} started!", me);
 
-    let redis_url = std::env::var("REDIS_URL").expect("REDIS_URL not set");
+    let redis_url = std::env::var("REDIS_URL");
+    let sqlite_file = std::env::var("SQLITE_FILE");
 
-    let storage = RedisStorage::open(redis_url, Bincode)
-        .await
-        .expect("Failed to open redis storage");
+    let storage: StateStorage = match redis_url {
+        Ok(url) => RedisStorage::open(url, Bincode).await.unwrap().erase(),
+        Err(_) => match sqlite_file {
+            Ok(filename) => SqliteStorage::open(&filename, Json)
+                .await
+                .expect("Failed to open redis storage")
+                .erase(),
+            Err(_) => InMemStorage::<State>::new().erase(),
+        },
+    };
 
     let openai_client = async_openai::Client::new();
 
