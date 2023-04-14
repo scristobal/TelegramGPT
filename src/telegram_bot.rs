@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 use std::time::{Duration, Instant};
 use teloxide::{
     dispatching::{
-        dialogue::{self, serializer::Bincode, RedisStorage},
+        dialogue::{self, ErasedStorage},
         UpdateFilterExt, UpdateHandler,
     },
     filter_command,
@@ -38,18 +38,19 @@ pub struct State {
     chat_history: Vec<ChatCompletionRequestMessage>,
 }
 
-pub fn schema() -> UpdateHandler<anyhow::Error> {
+type Storage = ErasedStorage<State>;
+type Dialog = Dialogue<State, ErasedStorage<State>>;
+type HandlerResult = Result<(), Box<dyn std::error::Error + Send + Sync>>;
+
+pub fn schema() -> UpdateHandler<Box<dyn std::error::Error + Send + Sync>> {
     let cmd_handler = filter_command::<Command, _>().branch(case![Command::Start].endpoint(reset));
 
     let msg_handler = Update::filter_message().branch(cmd_handler).endpoint(chat);
 
-    dialogue::enter::<Update, RedisStorage<Bincode>, State, _>().branch(msg_handler)
+    dialogue::enter::<Update, Storage, State, _>().branch(msg_handler)
 }
 
-type RedisDialogue = Dialogue<State, RedisStorage<Bincode>>;
-type HandlerResult = Result<(), anyhow::Error>;
-
-async fn reset(bot: Bot, dialogue: RedisDialogue, message: Message) -> HandlerResult {
+async fn reset(bot: Bot, dialogue: Dialog, message: Message) -> HandlerResult {
     let chat_id = message.chat.id;
 
     bot.send_chat_action(chat_id, teloxide::types::ChatAction::Typing)
@@ -70,12 +71,7 @@ async fn reset(bot: Bot, dialogue: RedisDialogue, message: Message) -> HandlerRe
     Ok(())
 }
 
-async fn chat(
-    bot: Bot,
-    dialogue: RedisDialogue,
-    client: Client,
-    message: Message,
-) -> HandlerResult {
+async fn chat(bot: Bot, dialogue: Dialog, client: Client, message: Message) -> HandlerResult {
     let username = message.from().and_then(|user| user.username.clone());
 
     let chat_id = message.chat.id;
