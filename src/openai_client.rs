@@ -30,7 +30,7 @@ pub async fn reply(
         name: None,
     };
 
-    let model = model.unwrap_or("gpt-4");
+    let model = model.unwrap_or("gpt-4-1106-preview");
 
     let mut request_messages = Vec::new();
 
