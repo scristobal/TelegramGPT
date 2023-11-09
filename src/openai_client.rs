@@ -10,19 +10,19 @@ use tiktoken_rs::get_chat_completion_max_tokens;
 use tracing::instrument;
 
 const MAX_TOKENS_COMPLETION: u16 = 1_000;
+const DEFAULT_MODEL: &str = "gpt-4-1106-preview";
+const DEFAULT_SYSTEM_MESSAGE: &str = "You are a helpful Telegram chat bot";
 
 #[instrument]
 pub async fn reply(
-    messages: &[ChatCompletionRequestMessage],
+    message_history: &[ChatCompletionRequestMessage],
     client: Option<Client>,
-    system: Option<&str>,
+    system_message: Option<&str>,
     model: Option<&str>,
 ) -> Result<ChatCompletionResponseStream, OpenAIError> {
     let client = client.unwrap_or_else(Client::new);
 
-    let system = system
-        .unwrap_or("You are GTP-4 a Telegram chat bot")
-        .to_string();
+    let system = system_message.unwrap_or(DEFAULT_SYSTEM_MESSAGE).to_string();
 
     let system_msg = ChatCompletionRequestMessage {
         role: Role::System,
@@ -30,14 +30,14 @@ pub async fn reply(
         name: None,
     };
 
-    let model = model.unwrap_or("gpt-4-1106-preview");
+    let model = model.unwrap_or(DEFAULT_MODEL);
 
     let mut request_messages = Vec::new();
 
     request_messages.push(system_msg);
 
-    for message in messages.iter() {
-        let Ok(max_tokens) = get_chat_completion_max_tokens("gpt-4", &request_messages) else { break };
+    for message in message_history.iter() {
+        let Ok(max_tokens) = get_chat_completion_max_tokens(DEFAULT_MODEL, &request_messages) else { break };
 
         if max_tokens < (MAX_TOKENS_COMPLETION as usize) {
             break;
