@@ -16,7 +16,7 @@ serde = { version = "1.0.154",features = ["derive"] }
 serde_json = "1.0.94"
 serde_with = "2.3.1"
 teloxide = { version = "0.12.2", features = ["macros", "redis-storage","bincode-serializer", "sqlite-storage"] }
-tiktoken-rs = "0.3.3"
+tiktoken-rs = "0.5.8"
 tokio ={ version = "1.26.0", features = ["rt-multi-thread", "macros", "time"]}
 tokio-stream = "0.1.12"
 tracing = "0.1.37"
