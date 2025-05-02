@@ -10,7 +10,7 @@ use tiktoken_rs::get_chat_completion_max_tokens;
 use tracing::instrument;
 
 const MAX_TOKENS_COMPLETION: u16 = 1_000;
-const DEFAULT_MODEL: &str = "gpt-4-1106-preview";
+const DEFAULT_MODEL: &str = "chatgpt-4o-latest";
 const DEFAULT_SYSTEM_MESSAGE: &str = "You are a helpful Telegram chat bot";
 
 #[instrument]
