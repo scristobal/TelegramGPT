@@ -2,12 +2,12 @@ use dotenv::dotenv;
 use std::{io::Result, sync::Arc};
 use telegram_gpt::{
     health_checker,
-    telegram_bot::{schema, Command, State},
+    telegram_bot::{Command, State, schema},
 };
 use teloxide::{
     dispatching::dialogue::{
-        serializer::{Bincode, Json},
         ErasedStorage, InMemStorage, RedisStorage, SqliteStorage, Storage,
+        serializer::{Bincode, Json},
     },
     prelude::*,
     utils::command::BotCommands,
@@ -44,7 +44,7 @@ async fn main() -> Result<()> {
     let sqlite_file = std::env::var("SQLITE_FILE");
 
     let storage: StateStorage = match (redis_url, sqlite_file) {
-        (Ok(url), _) => RedisStorage::open(url, Bincode)
+        (Ok(url), _) => RedisStorage::open(&url, Bincode)
             .await
             .expect("Failed to connect to Redis")
             .erase(),

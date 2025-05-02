@@ -1,23 +1,28 @@
 use crate::openai_client::reply;
 use async_openai::{
-    types::{ChatCompletionRequestMessage, ChatCompletionResponseStream, Role},
     Client,
+    config::OpenAIConfig,
+    types::{
+        ChatCompletionRequestAssistantMessage, ChatCompletionRequestAssistantMessageContent,
+        ChatCompletionRequestMessage, ChatCompletionRequestUserMessage,
+        ChatCompletionRequestUserMessageContent, ChatCompletionResponseStream, Role,
+    },
 };
 use dptree::case;
 use serde::{Deserialize, Serialize};
 use std::time::{Duration, Instant};
 use teloxide::{
+    Bot, RequestError,
     dispatching::{
-        dialogue::{self, ErasedStorage},
         UpdateFilterExt, UpdateHandler,
+        dialogue::{self, ErasedStorage},
     },
     filter_command,
-    payloads::SendMessageSetters,
     prelude::Dialogue,
     requests::Requester,
+    sugar::request::RequestReplyExt,
     types::{ChatAction, Message, Update},
     utils::command::BotCommands,
-    Bot, RequestError,
 };
 use tokio_stream::StreamExt;
 use tracing::error;
@@ -64,8 +69,13 @@ async fn reset(bot: Bot, dialogue: Dialog, message: Message) -> HandlerResult {
     Ok(())
 }
 
-async fn chat(bot: Bot, dialogue: Dialog, client: Client, message: Message) -> HandlerResult {
-    let username = message.from().and_then(|user| user.username.clone());
+async fn chat(
+    bot: Bot,
+    dialogue: Dialog,
+    client: Client<OpenAIConfig>,
+    message: Message,
+) -> HandlerResult {
+    let username = message.from.as_ref().and_then(|user| user.username.clone());
 
     let chat_id = message.chat.id;
 
@@ -73,11 +83,12 @@ async fn chat(bot: Bot, dialogue: Dialog, client: Client, message: Message) -> H
 
     let State { mut chat_history } = dialogue.get_or_default().await?;
 
-    let new_message = ChatCompletionRequestMessage {
-        role: Role::User,
-        content: message.text().unwrap_or("").to_string(),
-        name: username,
-    };
+    let new_message = ChatCompletionRequestMessage::User(ChatCompletionRequestUserMessage {
+        content: ChatCompletionRequestUserMessageContent::Text(
+            message.text().as_ref().unwrap_or(&"").to_string(),
+        ),
+        name: username.clone(),
+    });
 
     chat_history.push(new_message);
 
@@ -91,11 +102,17 @@ async fn chat(bot: Bot, dialogue: Dialog, client: Client, message: Message) -> H
 
             let bot_message = send_stream(&bot, &message, &mut response_stream).await?;
 
-            let bot_request = ChatCompletionRequestMessage {
-                role: Role::Assistant,
-                content: bot_message.text().unwrap_or("").to_string(),
-                name: botname,
-            };
+            let bot_request =
+                ChatCompletionRequestMessage::Assistant(ChatCompletionRequestAssistantMessage {
+                    content: Some(ChatCompletionRequestAssistantMessageContent::Text(
+                        bot_message.text().unwrap_or("").to_string(),
+                    )),
+                    refusal: None,
+                    name: botname,
+                    audio: None,
+                    tool_calls: None,
+                    function_call: None,
+                });
 
             chat_history.push(bot_request);
 
@@ -110,7 +127,7 @@ async fn chat(bot: Bot, dialogue: Dialog, client: Client, message: Message) -> H
 async fn send_reply(bot: &Bot, message: &Message, text: &str) -> Result<Message, RequestError> {
     Ok(if !message.chat.is_private() {
         bot.send_message(message.chat.id, text)
-            .reply_to_message_id(message.id)
+            .reply_to(message.id)
             .await?
     } else {
         bot.send_message(message.chat.id, text).await?
@@ -150,7 +167,10 @@ async fn send_stream(
                 let Some(delta_text) = partial_response
                     .choices
                     .first()
-                    .and_then(|choice| choice.delta.content.as_ref()) else {continue;};
+                    .and_then(|choice| choice.delta.content.as_ref())
+                else {
+                    continue;
+                };
 
                 full_text.push_str(delta_text);
 

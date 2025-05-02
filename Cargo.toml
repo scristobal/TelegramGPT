@@ -1,22 +1,22 @@
 [package]
 name = "telegram-gpt"
 version = "0.1.0"
-edition = "2021"
+edition = "2024"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
 anyhow = "1.0.69"
-async-openai = "0.10.1"
+async-openai = "0.28.1"
 chrono = "0.4.24"
 dotenv = "0.15.0"
 dptree = "0.3.0"
-reqwest = { version = "0.12.4", features = ['json']}
+reqwest = { version = "0.12.15", features = ['json']}
 serde = { version = "1.0.154",features = ["derive"] }
 serde_json = "1.0.94"
-serde_with = "2.3.1"
-teloxide = { version = "0.12.2", features = ["macros", "redis-storage","bincode-serializer", "sqlite-storage"] }
-tiktoken-rs = "0.3.3"
+serde_with = "3.12.0"
+teloxide = { version = "0.15.0", features = ["macros", "redis-storage","bincode-serializer", "sqlite-storage-rustls"] }
+tiktoken-rs = "0.6.0"
 tokio ={ version = "1.26.0", features = ["rt-multi-thread", "macros", "time"]}
 tokio-stream = "0.1.12"
 tracing = "0.1.37"
