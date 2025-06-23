@@ -15,7 +15,7 @@ reqwest = { version = "0.12.15", features = ['json']}
 serde = { version = "1.0.154",features = ["derive"] }
 serde_json = "1.0.94"
 serde_with = "3.12.0"
-teloxide = { version = "0.15.0", features = ["macros", "redis-storage","bincode-serializer", "sqlite-storage-rustls"] }
+teloxide = { version = "0.16.0", features = ["macros", "redis-storage","bincode-serializer", "sqlite-storage-rustls"] }
 tiktoken-rs = "0.6.0"
 tokio ={ version = "1.26.0", features = ["rt-multi-thread", "macros", "time"]}
 tokio-stream = "0.1.12"
